@@ -90,6 +90,8 @@ def get_people() -> list[str]:
 def remove_person(name: str) -> bool:
     if not name_exists(name):
         raise Exception(f"Name: {name} does not exist")
+
+    cur.execute("DELETE FROM money WHERE name = ?", (name,))
     s = cur.execute("DELETE FROM person WHERE name = ?", (name,))
     success = s.rowcount > 0
     if success:
@@ -111,14 +113,6 @@ def get_current_balance(name: str) -> float:
     return res.fetchone()[0]
 
 
-def red(text: str) -> str:
-    return "\033[31m" + text + "\033[0m"
-
-
-def green(text: str) -> str:
-    return "\033[32m" + text + "\033[0m"
-
-
 def get_balance_list(name: str) -> list[tuple[int, str]]:
     res = cur.execute("SELECT amount, reason FROM money WHERE name = ?", (name,))
     return res.fetchall()
@@ -129,15 +123,25 @@ def get_overview() -> list[tuple[str, int]]:
     return res.fetchall()
 
 
+def red(text: str) -> str:
+    return "\033[31m" + text + "\033[0m"
+
+
+def green(text: str) -> str:
+    return "\033[32m" + text + "\033[0m"
+
+
 class Cmd:
     arg_list: dict[str, int] = {
         "all": 0,
-        "color": 0
+        "color": 0,
+        "help": 0
     }
 
     short_args: dict[str, str] = {
         "a": "all",
-        "c": "color"
+        "c": "color",
+        "h": "help"
     }
 
     def __init__(self, args: list[str], base: Self = None):
@@ -170,6 +174,20 @@ class Cmd:
             print(f"{self.__format_balance(amount)} ({reason})")
         print("----------")
         print(f"{self.__format_balance(total)}")
+
+    def print_help(self):
+        print("Usage: ")
+        print("money")
+        print(f"  {"get":<50} Get the balance of all the people (if they have at least one entry)")
+        print(f"  {"get <name>":<50} Get the current balance of the give person")
+        print(f"  {"get <name> (-a | --all)":<50} Get all entries with description of the give person")
+        print()
+        print(f"  {"add <name> <amount> <description>":<50} Create a new entry for the given person")
+        print(f"  {"(add-p | add-person) <name>":<50} Register a new person")
+        print(f"  {"rm <name>":<50} Remove the given person and all their entries")
+        print(f"  {"list":<50} List all registered people")
+        print(f"  {"run":<50} Create a new session for running multiple commands much easier"
+              "(args from this command will be)")
 
     def __parse_arg(self, arg: str):
         val = Cmd.arg_list.get(arg)
@@ -215,7 +233,10 @@ class Cmd:
     def __exec(self):
         self.__parse()
         if len(self.__args) == 0:
-            print("Use --help to display info")
+            if "help" in self.__flags:
+                self.print_help()
+            else:
+                print("Use --help to display info")
             return
 
         [cmd, *args] = self.__args
