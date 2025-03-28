@@ -113,8 +113,8 @@ def get_current_balance(name: str) -> float:
     return res.fetchone()[0]
 
 
-def get_balance_list(name: str) -> list[tuple[int, str]]:
-    res = cur.execute("SELECT amount, reason FROM money WHERE name = ?", (name,))
+def get_balance_list(name: str) -> list[tuple[int, int, str]]:
+    res = cur.execute("SELECT amount, created_at, reason FROM money WHERE name = ?", (name,))
     return res.fetchall()
 
 
@@ -170,12 +170,19 @@ class Cmd:
         for [name, amount] in overview:
             print(f"{name}: {self.__format_balance(amount)}")
 
-    def __print_history(self, name: str, history: list[tuple[int, str]]):
+    def __format_timestamp(self, date: int) -> str:
+        fmt = datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%d %H:%M")
+        if "color" in self.__flags:
+            fmt = cyan(fmt)
+        return fmt
+
+    def __print_history(self, name: str, history: list[tuple[int, int, str]]):
         print(name + ":")
         total = 0
-        for [amount, reason] in history:
+        for (amount, created_at, reason) in history:
             total += amount
-            print(f"{self.__format_balance(amount)} ({reason})")
+            print(
+                f"{self.__format_balance(amount)} {self.__format_timestamp(created_at)} ({reason})")
         print("----------")
         print(f"{self.__format_balance(total)}")
 
