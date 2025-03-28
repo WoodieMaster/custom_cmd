@@ -131,6 +131,10 @@ def green(text: str) -> str:
     return "\033[32m" + text + "\033[0m"
 
 
+def cyan(text: str) -> str:
+    return "\033[36m" + text + "\033[0m"
+
+
 class Cmd:
     arg_list: dict[str, int] = {
         "all": 0,
@@ -176,18 +180,30 @@ class Cmd:
         print(f"{self.__format_balance(total)}")
 
     def print_help(self):
-        print("Usage: ")
-        print("money")
-        print(f"  {"get":<50} Get the balance of all the people (if they have at least one entry)")
-        print(f"  {"get <name>":<50} Get the current balance of the give person")
-        print(f"  {"get <name> (-a | --all)":<50} Get all entries with description of the give person")
-        print()
-        print(f"  {"add <name> <amount> <description>":<50} Create a new entry for the given person")
-        print(f"  {"(add-p | add-person) <name>":<50} Register a new person")
-        print(f"  {"rm <name>":<50} Remove the given person and all their entries")
-        print(f"  {"list":<50} List all registered people")
-        print(f"  {"run":<50} Create a new session for running multiple commands much easier"
-              "(args from this command will be)")
+        if "color" in self.__flags:
+            print(f"""Usage:
+money
+  {cyan("get"):<50} Get the balance of all the people (if they have at least one entry)
+  {cyan("get <name>"):<50} Get the current balance of the give person")
+  {cyan("get <name> (-a | --all)"):<50} Get all entries with description of the give person
+
+  {cyan("add <name> <amount> <description>"):<50} Create a new entry for the given person
+  {cyan("(add-p | add-person) <name>"):<50} Register a new person
+  {cyan("rm <name>"):<50} Remove the given person and all their entries
+  {cyan("list"):<50} List all registered people")
+  {cyan("run"):<50} Create a new session for running multiple commands much easier (args from this command will be)""")
+        else:
+            print(f"""Usage:
+money
+  {cyan("get"):<50} Get the balance of all the people (if they have at least one entry)
+  {cyan("get <name>"):<50} Get the current balance of the give person")
+  {cyan("get <name> (-a | --all)"):<50} Get all entries with description of the give person
+ 
+  {cyan("add <name> <amount> <description>"):<50} Create a new entry for the given person
+  {cyan("(add-p | add-person) <name>"):<50} Register a new person
+  {cyan("rm <name>"):<50} Remove the given person and all their entries
+  {cyan("list"):<50} List all registered people")
+  {cyan("run"):<50} Create a new session for running multiple commands much easier (args from this command will be)""")
 
     def __parse_arg(self, arg: str):
         val = Cmd.arg_list.get(arg)
