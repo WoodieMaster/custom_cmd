@@ -45,29 +45,8 @@ sqlite3.register_converter("date", convert_date)
 sqlite3.register_converter("datetime", convert_datetime)
 sqlite3.register_converter("timestamp", convert_timestamp)
 
-init_cmds = [
-    """
-    CREATE TABLE IF NOT EXISTS person (
-        name Text PRIMARY KEY
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS money (
-        name Text REFERENCES person(name),
-        amount Number,
-        created_at TIMESTAMP,
-        reason Text
-    )
-    """
-]
-
 conn = sqlite3.connect(os.path.dirname(sys.argv[0]) + "/money.db")
 cur = conn.cursor()
-
-
-def init():
-    for cmd in init_cmds:
-        cur.execute(cmd)
 
 
 def name_exists(name: str) -> bool:
@@ -82,29 +61,41 @@ def create_person(name: str):
     conn.commit()
 
 
-def get_people() -> list[str]:
-    cur.execute("SELECT name FROM person")
-    return [name[0] for name in cur.fetchall()]
-
-
-def remove_person(name: str) -> bool:
+def remove_person(name: str):
     if not name_exists(name):
         raise Exception(f"Name: {name} does not exist")
 
     cur.execute("DELETE FROM money WHERE name = ?", (name,))
     s = cur.execute("DELETE FROM person WHERE name = ?", (name,))
-    success = s.rowcount > 0
-    if success:
-        conn.commit()
-    return success
+
+    if s.rowcount > 0:
+        return conn.commit()
 
 
-def create_money_entry(name: str, amount: float, reason: str):
+def get_entry_by_index(name: str, index: int) -> tuple[int, float, int, str]:
+    s = cur.execute(
+        "SELECT id, amount, created_at, reason FROM money WHERE name = ? ORDER BY created_at DESC LIMIT 1 OFFSET ?",
+        (name, index))
+
+    return s.fetchone()
+
+
+def remove_money_entry(entry_id: int):
+    cur.execute("DELETE FROM money WHERE id = ?", (entry_id,))
+    cur.connection.commit()
+
+
+def count_entries(name: str) -> int:
+    cur.execute("SELECT Count(*) FROM money WHERE name = ?", (name,))
+    return cur.fetchone()[0]
+
+
+def create_money_entry(name: str, amount: float, reason: str, created_at: datetime.datetime):
     if not name_exists(name):
         raise Exception(f"Name: {name} does not exist")
 
     cur.execute("INSERT INTO money (name, amount, created_at, reason) VALUES (?, ?, ?, ?)",
-                (name, amount, datetime.datetime.now(), reason))
+                (name, amount, created_at, reason))
     conn.commit()
 
 
@@ -114,12 +105,13 @@ def get_current_balance(name: str) -> float:
 
 
 def get_balance_list(name: str) -> list[tuple[int, int, str]]:
-    res = cur.execute("SELECT amount, created_at, reason FROM money WHERE name = ?", (name,))
+    res = cur.execute("SELECT amount, created_at, reason FROM money WHERE name = ? ORDER BY created_at", (name,))
     return res.fetchall()
 
 
 def get_overview() -> list[tuple[str, int]]:
-    res = cur.execute("SELECT name, SUM(amount) FROM money GROUP BY name")
+    res = cur.execute(
+        "SELECT p.name, ifnull(SUM(amount), 0) FROM person p LEFT JOIN money m on p.name = m.name GROUP BY p.name ORDER BY p.name")
     return res.fetchall()
 
 
@@ -135,17 +127,97 @@ def cyan(text: str) -> str:
     return "\033[36m" + text + "\033[0m"
 
 
+def yellow(text: str) -> str:
+    return "\033[33m" + text + "\033[0m"
+
+
+def format_balance(value: float) -> str:
+    fmt = f"{abs(value):.2f}"
+    if value < 0:
+        return red(f"-{fmt:>7}")
+
+    if value == 0:
+        return yellow(f"={fmt:>7}")
+
+    return green(f"+{fmt:>7}")
+
+
+def format_single_balance(value: float) -> str:
+    fmt = f"{abs(value):.2f}"
+    if value < 0:
+        return red(f"-{fmt}")
+
+    if value == 0:
+        return yellow(f"={fmt}")
+
+    return green(f"+{fmt}")
+
+
+def format_timestamp(date: int) -> str:
+    fmt = datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%d %H:%M")
+    return cyan(fmt)
+
+
+def format_entry(name: str, entry: tuple[int, float, int, str]) -> str:
+    return f"{cyan(name)} {format_single_balance(entry[1])} {format_timestamp(entry[2])} ({entry[3]})"
+
+
+def format_person(name: str, money: float, entry_count) -> str:
+    return f"{cyan(name)} ({format_single_balance(money)}, {entry_count} {"entries" if entry_count != 1 else "entry"})"
+
+
+def print_overview(overview: list[tuple[str, int]]):
+    for [name, amount] in overview:
+        print(f"{name:10} {format_balance(amount)}")
+
+
+def print_history(name: str, history: list[tuple[int, int, str]]):
+    if not name_exists(name):
+        raise Exception(f"Name '{name}' does not exist")
+    print(name + ":")
+    total = 0
+    for (amount, created_at, reason) in history:
+        total += amount
+        print(
+            f"{format_balance(amount)} {format_timestamp(created_at)} ({reason})")
+    print("----------")
+    print(f"{format_balance(total)}")
+
+
+def print_help():
+    cmds = [
+        ("help", "Show this help message"),
+        ("list", "Get the balance of all the people"),
+        ("get <name>", "Get all entries with description of the give person"),
+        ("add <name> <amount> <description>", "Create a new entry for the given person"),
+        ("(add-p | add-person) <name>", "Register a new person"),
+        ("rm <name> <idx>",
+         "Remove entry with the given idx of the given person.\nThe idx is based on the entries timestamp (last made entry = 0)"),
+        ("(rm-p | rm-person) <name>", "Remove the given person and all their entries"),
+        ("run", "Create a new session for running multiple commands much easier\n(args from this command will be)"),
+        ("exit", "Exit the session entered by the run command")
+    ]
+
+    print("Command list:")
+    print("money")
+
+    for cmd in cmds:
+        fmt_code = cmd[0].ljust(40, " ")
+        print(f"{" " * 6}{cyan(fmt_code)} {cmd[1].replace("\n", "\n" + (" " * 50))}")
+
+
+def print_error(e: BaseException):
+    fmt = f"Error: {e}"
+    print(red(fmt))
+
+
 class Cmd:
     arg_list: dict[str, int] = {
-        "all": 0,
-        "color": 0,
-        "help": 0
+        "date": 1
     }
 
     short_args: dict[str, str] = {
-        "a": "all",
-        "c": "color",
-        "h": "help"
+        "d": "date"
     }
 
     def __init__(self, args: list[str], base: Self = None):
@@ -153,64 +225,6 @@ class Cmd:
         self.__flags: set[str] = base.__flags.copy() if base is not None else set()
         self.__vars: dict[str, list[str]] = base.__vars.copy() if base is not None else dict()
         self.__args: list[str] = list()
-
-    def __print_current_money(self, name: str, amount: float):
-        print(f"{name}: {self.__format_balance(amount)}")
-
-    def __format_balance(self, value: float) -> str:
-        fmt = f"{value:.2f}"
-        if "color" in self.__flags:
-            if value < 0:
-                return red(fmt)
-            return green(fmt)
-        else:
-            return fmt
-
-    def __print_overview(self, overview: list[tuple[str, int]]):
-        for [name, amount] in overview:
-            print(f"{name}: {self.__format_balance(amount)}")
-
-    def __format_timestamp(self, date: int) -> str:
-        fmt = datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%d %H:%M")
-        if "color" in self.__flags:
-            fmt = cyan(fmt)
-        return fmt
-
-    def __print_history(self, name: str, history: list[tuple[int, int, str]]):
-        print(name + ":")
-        total = 0
-        for (amount, created_at, reason) in history:
-            total += amount
-            print(
-                f"{self.__format_balance(amount)} {self.__format_timestamp(created_at)} ({reason})")
-        print("----------")
-        print(f"{self.__format_balance(total)}")
-
-    def print_help(self):
-        if "color" in self.__flags:
-            print(f"""Usage:
-money
-  {cyan("get"):<50} Get the balance of all the people (if they have at least one entry)
-  {cyan("get <name>"):<50} Get the current balance of the give person")
-  {cyan("get <name> (-a | --all)"):<50} Get all entries with description of the give person
-
-  {cyan("add <name> <amount> <description>"):<50} Create a new entry for the given person
-  {cyan("(add-p | add-person) <name>"):<50} Register a new person
-  {cyan("rm <name>"):<50} Remove the given person and all their entries
-  {cyan("list"):<50} List all registered people")
-  {cyan("run"):<50} Create a new session for running multiple commands much easier (args from this command will be)""")
-        else:
-            print(f"""Usage:
-money
-  {cyan("get"):<50} Get the balance of all the people (if they have at least one entry)
-  {cyan("get <name>"):<50} Get the current balance of the give person")
-  {cyan("get <name> (-a | --all)"):<50} Get all entries with description of the give person
- 
-  {cyan("add <name> <amount> <description>"):<50} Create a new entry for the given person
-  {cyan("(add-p | add-person) <name>"):<50} Register a new person
-  {cyan("rm <name>"):<50} Remove the given person and all their entries
-  {cyan("list"):<50} List all registered people")
-  {cyan("run"):<50} Create a new session for running multiple commands much easier (args from this command will be)""")
 
     def __parse_arg(self, arg: str):
         val = Cmd.arg_list.get(arg)
@@ -242,7 +256,7 @@ money
 
             if n.startswith("--"):
                 self.__parse_arg(n[2:])
-            elif n.startswith("-"):
+            elif n.startswith("-") and len(n) > 1 and not n[1].isdigit():
                 for c in n[1:]:
                     name = Cmd.short_args.get(c)
 
@@ -256,72 +270,115 @@ money
     def __exec(self):
         self.__parse()
         if len(self.__args) == 0:
-            if "help" in self.__flags:
-                self.print_help()
-            else:
-                print("Use --help to display info")
+            print("Use command 'help' to show more info")
             return
 
+        args: list[str]
         [cmd, *args] = self.__args
 
         match cmd:
+            case "help":
+                print_help()
             case "run":
                 self.run()
             case "list":
-                print("\n".join(get_people()))
+                print_overview(get_overview())
             case "rm":
+                if len(args) != 2:
+                    raise Exception(f"Invalid arguments ({', '.join(args)}), requires: <name> <idx>")
+                name = args[0]
+                idx = int(args[1])
+                entry = get_entry_by_index(name, idx)
+
+                count = count_entries(name)
+
+                print(count, count >= idx, idx)
+                if count == 0:
+                    raise Exception(f"{name} has no entries to delete!")
+                if idx >= count or idx < 0:
+                    raise Exception(f"{idx} is not a valid index for {name}. (valid: 0 - {count - 1})")
+
+                if input(f"{format_entry(name, entry)}\nDelete this entry? (y/n)").lower() == "y":
+                    remove_money_entry(entry[0])
+                    print(green("Deleted entry"))
+                else:
+                    print(red("Deletion cancelled"))
+            case "rm-p" | "rm-person":
                 if len(args) != 1:
                     raise Exception(f"Invalid arguments ({', '.join(args)}), requires: <name>")
-                remove_person(args[0])
-                print(f"Removed person {args[0]} successfully")
+                name = args[0]
+                entry_count = count_entries(name)
+                if not name_exists(name):
+                    raise Exception(f"Name: {name} does not exist")
+
+                money = get_current_balance(name) or 0
+                print(format_person(name, money, entry_count))
+                if input(f"Delete person? (y/n)").lower() == "y":
+                    remove_person(name)
+                    print(green(f"Removed person {name}"))
+                else:
+                    print(red("Deletion cancelled!"))
             case "add":
                 if len(args) != 3:
                     raise Exception(f"Invalid arguments ({", ".join(args)}), requires: <name> <amount> <reason>")
 
                 [name, amount, reason] = self.__args[1:]
-                create_money_entry(name, float(amount), reason)
+                created_at: datetime.datetime
+
+                date_var = self.__vars.get("date", None)
+
+                if date_var is not None:
+                    date_str = date_var[0]
+                    p_date = datetime.datetime.today().date()
+                    p_time = datetime.time.min
+
+                    v_date: str
+                    if "_" in date_str:
+                        [v_date, v_time] = date_str.split("_", 1)
+
+                        if v_time != "":
+                            p_time = datetime.datetime.strptime(v_time, "%H:%M").time()
+                    else:
+                        v_date = date_str
+
+                    if v_date != "":
+                        p_date = datetime.datetime.strptime(v_date, "%Y-%m-%d").date()
+
+                    created_at = datetime.datetime.combine(p_date, p_time)
+                else:
+                    created_at = datetime.datetime.now()
+
+                create_money_entry(name, float(amount), reason, created_at)
             case "add-person" | "add-p":
                 if len(args) != 1:
                     raise Exception(f"Invalid arguments ({', '.join(args)}), requires: <name>")
                 create_person(args[0])
                 print(f"Added person {args[0]} successfully")
             case "exit":
+                conn.close()
                 exit(0)
             case "get":
-                if len(args) == 1:
-                    name = self.__args[1]
-                    if "all" in self.__flags:
-                        self.__print_history(name, get_balance_list(name))
-                    else:
-                        self.__print_current_money(name, get_current_balance(name))
-                elif len(args) == 0:
-                    self.__print_overview(get_overview())
+                if len(args) != 1:
+                    raise Exception(f"Invalid arguments ({', '.join(args)}), requires: <name>")
+                name = self.__args[1]
+                print_history(name, get_balance_list(name))
             case _:
                 raise Exception(f"Unknown command: {cmd}")
 
     def run(self):
         while True:
-            args = split(input(">>> "))
+            args = split(input("> "))
             cmd = Cmd(args, self)
             cmd.exec()
-
-    def __print_error(self, e: BaseException):
-        fmt = f"Error: {e}"
-
-        if "color" in self.__flags:
-            fmt = red(fmt)
-
-        print(fmt)
 
     def exec(self):
         try:
             self.__exec()
         except Exception as e:
-            self.__print_error(e)
+            print_error(e)
 
 
 def main():
-    init()
     cmd = Cmd(sys.argv[1:])
     cmd.exec()
     conn.close()
