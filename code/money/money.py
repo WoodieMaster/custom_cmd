@@ -1,5 +1,6 @@
 import datetime
 import os
+import shutil
 import sqlite3
 import sys
 from shlex import split
@@ -32,7 +33,8 @@ def convert_date(val):
 
 
 def convert_datetime(val):
-    """Convert ISO 8601 datetime to datetime.datetime object."""
+    """Convert ISO 8601
+     datetime to datetime.datetime object."""
     return datetime.datetime.fromisoformat(val.decode())
 
 
@@ -45,8 +47,20 @@ sqlite3.register_converter("date", convert_date)
 sqlite3.register_converter("datetime", convert_datetime)
 sqlite3.register_converter("timestamp", convert_timestamp)
 
-conn = sqlite3.connect(os.path.dirname(sys.argv[0]) + "/money.db")
-cur = conn.cursor()
+curr_path = os.path.dirname(sys.argv[0])
+
+
+def rel_path(*parts: str) -> str:
+    return os.path.join(curr_path, *parts)
+
+
+def connect():
+    _conn = sqlite3.connect(rel_path("money.db"))
+    _cur = _conn.cursor()
+    return _conn, _cur
+
+
+conn, cur = connect()
 
 
 def name_exists(name: str) -> bool:
@@ -195,7 +209,8 @@ def print_help():
          "Remove entry with the given idx of the given person.\nThe idx is based on the entries timestamp (last made entry = 0)"),
         ("(rm-p | rm-person) <name>", "Remove the given person and all their entries"),
         ("run", "Create a new session for running multiple commands much easier\n(args from this command will be)"),
-        ("exit", "Exit the session entered by the run command")
+        ("exit", "Exit the session entered by the run command"),
+        ("backup", "Create a backup of the database")
     ]
 
     print("Command list:")
@@ -204,6 +219,13 @@ def print_help():
     for cmd in cmds:
         fmt_code = cmd[0].ljust(40, " ")
         print(f"{" " * 6}{cyan(fmt_code)} {cmd[1].replace("\n", "\n" + (" " * 50))}")
+
+
+def backup():
+    global conn, cur
+    conn.close()
+    shutil.copyfile(rel_path("money.db"), rel_path("bkp", f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"))
+    conn, cur = connect()
 
 
 def print_error(e: BaseException):
@@ -318,6 +340,8 @@ class Cmd:
                     print(green(f"Removed person {name}"))
                 else:
                     print(red("Deletion cancelled!"))
+            case "backup":
+                backup()
             case "add":
                 if len(args) != 3:
                     raise Exception(f"Invalid arguments ({", ".join(args)}), requires: <name> <amount> <reason>")
