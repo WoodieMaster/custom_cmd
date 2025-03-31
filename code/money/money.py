@@ -6,6 +6,8 @@ import sys
 from shlex import split
 from typing import Self
 
+import utils
+
 
 def adapt_date_iso(val):
     """Adapt datetime.date to ISO 8601 date."""
@@ -129,55 +131,39 @@ def get_overview() -> list[tuple[str, int]]:
     return res.fetchall()
 
 
-def red(text: str) -> str:
-    return "\033[31m" + text + "\033[0m"
-
-
-def green(text: str) -> str:
-    return "\033[32m" + text + "\033[0m"
-
-
-def cyan(text: str) -> str:
-    return "\033[36m" + text + "\033[0m"
-
-
-def yellow(text: str) -> str:
-    return "\033[33m" + text + "\033[0m"
-
-
 def format_balance(value: float) -> str:
     fmt = f"{abs(value):.2f}"
     if value < 0:
-        return red(f"-{fmt:>7}")
+        return utils.red(f"-{fmt:>7}")
 
     if value == 0:
-        return yellow(f"={fmt:>7}")
+        return utils.yellow(f"={fmt:>7}")
 
-    return green(f"+{fmt:>7}")
+    return utils.green(f"+{fmt:>7}")
 
 
 def format_single_balance(value: float) -> str:
     fmt = f"{abs(value):.2f}"
     if value < 0:
-        return red(f"-{fmt}")
+        return utils.red(f"-{fmt}")
 
     if value == 0:
-        return yellow(f"={fmt}")
+        return utils.yellow(f"={fmt}")
 
-    return green(f"+{fmt}")
+    return utils.green(f"+{fmt}")
 
 
 def format_timestamp(date: int) -> str:
     fmt = datetime.datetime.fromtimestamp(date).strftime("%Y-%m-%d %H:%M")
-    return cyan(fmt)
+    return utils.cyan(fmt)
 
 
 def format_entry(name: str, entry: tuple[int, float, int, str]) -> str:
-    return f"{cyan(name)} {format_single_balance(entry[1])} {format_timestamp(entry[2])} ({entry[3]})"
+    return f"{utils.cyan(name)} {format_single_balance(entry[1])} {format_timestamp(entry[2])} ({entry[3]})"
 
 
 def format_person(name: str, money: float, entry_count) -> str:
-    return f"{cyan(name)} ({format_single_balance(money)}, {entry_count} {"entries" if entry_count != 1 else "entry"})"
+    return f"{utils.cyan(name)} ({format_single_balance(money)}, {entry_count} {"entries" if entry_count != 1 else "entry"})"
 
 
 def print_overview(overview: list[tuple[str, int]]):
@@ -201,6 +187,7 @@ def print_history(name: str, history: list[tuple[int, int, str]]):
 def print_help():
     cmds = [
         ("help", "Show this help message"),
+        ("init", "Initialize everything needed for the money cli to run"),
         ("list", "Get the balance of all the people"),
         ("get <name>", "Get all entries with description of the give person"),
         ("add <name> <amount> <description>", "Create a new entry for the given person"),
@@ -218,7 +205,7 @@ def print_help():
 
     for cmd in cmds:
         fmt_code = cmd[0].ljust(40, " ")
-        print(f"{" " * 6}{cyan(fmt_code)} {cmd[1].replace("\n", "\n" + (" " * 50))}")
+        print(f"{" " * 6}{utils.cyan(fmt_code)} {cmd[1].replace("\n", "\n" + (" " * 50))}")
 
 
 def backup():
@@ -230,7 +217,7 @@ def backup():
 
 def print_error(e: BaseException):
     fmt = f"Error: {e}"
-    print(red(fmt))
+    print(utils.red(fmt))
 
 
 class Cmd:
@@ -305,6 +292,9 @@ class Cmd:
                 self.run()
             case "list":
                 print_overview(get_overview())
+            case "init":
+                import init
+                init.init()
             case "rm":
                 if len(args) != 2:
                     raise Exception(f"Invalid arguments ({', '.join(args)}), requires: <name> <idx>")
@@ -322,9 +312,9 @@ class Cmd:
 
                 if input(f"{format_entry(name, entry)}\nDelete this entry? (y/N)").lower() == "y":
                     remove_money_entry(entry[0])
-                    print(green("Deleted entry"))
+                    print(utils.green("Deleted entry"))
                 else:
-                    print(red("Deletion cancelled"))
+                    print(utils.red("Deletion cancelled"))
             case "rm-p" | "rm-person":
                 if len(args) != 1:
                     raise Exception(f"Invalid arguments ({', '.join(args)}), requires: <name>")
@@ -337,9 +327,9 @@ class Cmd:
                 print(format_person(name, money, entry_count))
                 if input(f"Delete person? (y/N)").lower() == "y":
                     remove_person(name)
-                    print(green(f"Removed person {name}"))
+                    print(utils.green(f"Removed person {name}"))
                 else:
-                    print(red("Deletion cancelled!"))
+                    print(utils.red("Deletion cancelled!"))
             case "backup":
                 backup()
             case "add":

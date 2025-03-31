@@ -1,15 +1,16 @@
 import os
+import pathlib
 import shutil
 import sys
 from collections.abc import Callable
-import pathlib
-from warnings import catch_warnings
 
 CMD = "langinit"
+
 
 def add_file(path: str, filename: str, content: str):
     with open(os.path.join(path, filename), 'w') as f:
         f.write(content)
+
 
 def add_gitignore(name: str):
     shutil.copyfile(
@@ -22,14 +23,13 @@ def add_gitignore(name: str):
         ),
         '.gitignore')
 
+
 def python(path: str, _args: list[str]):
     add_file(path, 'requirements.txt', '')
     add_gitignore('python')
     os.system("git init")
     os.system("python -m venv .venv")
     os.system("pycharm .")
-
-
 
 
 LANG_MAP: dict[str, Callable[[str, list[str]], None]] = {
@@ -43,7 +43,7 @@ def main():
 
     try:
         pos = args.index("--")
-        lang_args = args[pos+1:]
+        lang_args = args[pos + 1:]
         args = args[:pos]
     except ValueError:
         lang_args = []
@@ -76,6 +76,7 @@ def main():
         os.system(f"cd {curr_dir}")
     else:
         LANG_MAP[lang](path, lang_args)
+
 
 if __name__ == '__main__':
     main()
