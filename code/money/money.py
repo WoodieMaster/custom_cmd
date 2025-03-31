@@ -320,7 +320,7 @@ class Cmd:
                 if idx >= count or idx < 0:
                     raise Exception(f"{idx} is not a valid index for {name}. (valid: 0 - {count - 1})")
 
-                if input(f"{format_entry(name, entry)}\nDelete this entry? (y/n)").lower() == "y":
+                if input(f"{format_entry(name, entry)}\nDelete this entry? (y/N)").lower() == "y":
                     remove_money_entry(entry[0])
                     print(green("Deleted entry"))
                 else:
@@ -335,7 +335,7 @@ class Cmd:
 
                 money = get_current_balance(name) or 0
                 print(format_person(name, money, entry_count))
-                if input(f"Delete person? (y/n)").lower() == "y":
+                if input(f"Delete person? (y/N)").lower() == "y":
                     remove_person(name)
                     print(green(f"Removed person {name}"))
                 else:
