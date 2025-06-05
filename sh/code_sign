@@ -1,0 +1,3 @@
+@echo off
+
+python $(dirname "$0")/../code/code_file_sign.py $@
